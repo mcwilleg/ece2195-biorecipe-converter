@@ -4,7 +4,7 @@ import java.util.Arrays;
 
 public class Parser {
     public static Interaction parseInteraction(String line) {
-        String[] split = line.split(",");
+        String[] split = Arrays.copyOf(line.split("[\t,]"), 24);
         Element regulator = parseElement(Arrays.copyOfRange(split, 0, 8));
         Element regulated = parseElement(Arrays.copyOfRange(split, 8, 16));
         Interaction interaction = new Interaction();

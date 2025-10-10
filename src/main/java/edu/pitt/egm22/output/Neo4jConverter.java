@@ -1,10 +1,11 @@
 package edu.pitt.egm22.output;
 
 import edu.pitt.egm22.biorecipe.Interaction;
+import jakarta.ws.rs.core.MultivaluedHashMap;
+import jakarta.ws.rs.core.MultivaluedMap;
 
 import java.io.File;
 import java.util.List;
-import java.util.Map;
 
 public class Neo4jConverter extends BioRecipeConverter {
     public Neo4jConverter(File inputParentFile) {
@@ -12,7 +13,18 @@ public class Neo4jConverter extends BioRecipeConverter {
     }
 
     @Override
-    public Map<String, List<String>> convertInteractions(File outputDirectory, List<Interaction> interactions) {
-        return null;
+    public MultivaluedMap<String, String> convertInteractions(File outputDirectory, List<Interaction> interactions) {
+        MultivaluedMap<String, String> output = new MultivaluedHashMap<>();
+        for (Interaction i : interactions) {
+            String regulator = i.getRegulator().getName();
+            String regulated = i.getRegulated().getName();
+            output.add(regulator, regulated);
+        }
+        return output;
+    }
+
+    @Override
+    public String getSchemaLine(Interaction schema) {
+        return schema.getRegulated().getName();
     }
 }

@@ -1,13 +1,15 @@
 package edu.pitt.egm22.output;
 
 import edu.pitt.egm22.biorecipe.Interaction;
+import jakarta.ws.rs.core.MultivaluedMap;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
-import java.io.PrintWriter;
+import java.net.URLEncoder;
+import java.nio.charset.Charset;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -26,10 +28,10 @@ public abstract class BioRecipeConverter {
         this.inputParentFile = inputParentFile;
     }
 
-    public void convertAndSave(List<Interaction> interactions) {
+    public void convertAndSave(Interaction schema, List<Interaction> interactions) {
         String timestamp = ZonedDateTime.now().format(DateTimeFormatter.ofPattern(timestampFormat));
         String inputParentPath = inputParentFile.getAbsolutePath();
-        String outputPath = String.join("_", inputParentPath + File.separatorChar + "output", converterType, timestamp);
+        String outputPath = String.join("_", inputParentPath + '/' + "output", converterType, timestamp);
         File outputDirectory = new File(outputPath);
         if (outputDirectory.exists()) {
             System.out.print("Output directory already exists! Overwrite? Y/N: ");
@@ -51,17 +53,18 @@ public abstract class BioRecipeConverter {
             System.out.println("Output directory could not be created. Exiting...");
             System.exit(1);
         }
-        Map<String, List<String>> converted = convertInteractions(outputDirectory, interactions);
-        writeToFile(outputPath, converted);
+        MultivaluedMap<String, String> converted = convertInteractions(outputDirectory, interactions);
+        writeToFile(outputPath, schema, converted);
     }
 
-    private void writeToFile(String outputPath, Map<String, List<String>> converted) {
+    private void writeToFile(String outputPath, Interaction schema, MultivaluedMap<String, String> converted) {
         for (Map.Entry<String, List<String>> entry : converted.entrySet()) {
-            String fileName = entry.getKey();
+            String fileName = cleanFileName(entry.getKey());
             List<String> lines = entry.getValue();
-            try (FileWriter writer = new FileWriter(outputPath + File.separatorChar + fileName)) {
+            try (FileWriter writer = new FileWriter(outputPath + '/' + fileName + ".csv")) {
+                writer.write(getSchemaLine(schema) + "\n");
                 for (String line : lines) {
-                    writer.write(line);
+                    writer.write(line + "\n");
                 }
             } catch (IOException e) {
                 System.err.println("IO error writing to output files: " + e.getMessage());
@@ -71,5 +74,11 @@ public abstract class BioRecipeConverter {
         }
     }
 
-    public abstract Map<String, List<String>> convertInteractions(File outputDirectory, List<Interaction> interactions);
+    private static String cleanFileName(String fileName) {
+        return URLEncoder.encode(fileName, Charset.defaultCharset());
+    }
+
+    public abstract MultivaluedMap<String, String> convertInteractions(File outputDirectory, List<Interaction> interactions);
+
+    public abstract String getSchemaLine(Interaction schema);
 }

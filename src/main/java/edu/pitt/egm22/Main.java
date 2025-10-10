@@ -11,9 +11,7 @@ import java.util.List;
 import java.util.Scanner;
 
 public class Main {
-    private static final String defaultInputPath = """
-    D:\\University\\2025 Fall\\ECE2195 Knowledge Graphs\\ece2195-gbm-kg\\original_Q2_LLaMa.csv
-    """;
+    private static final String defaultInputPath = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input/original_Q4_LLaMa.csv";
 
     public static void main(String[] args) {
         String inputPath = defaultInputPath;
@@ -21,19 +19,28 @@ public class Main {
             inputPath = args[0];
         }
         File inputFile = new File(inputPath);
+        Interaction schema = null;
         List<Interaction> interactions = new ArrayList<>();
         if (inputFile.isDirectory()) {
             File[] inputFiles = inputFile.listFiles();
             assert inputFiles != null;
             for (File f : inputFiles) {
                 if (!f.isDirectory()) {
-                    interactions.addAll(parseInteractions(f));
+                    List<Interaction> parsed = parseInteractions(f);
+                    schema = parsed.removeFirst();
+                    interactions.addAll(parsed);
                 }
             }
         } else {
-            interactions.addAll(parseInteractions(inputFile));
+            List<Interaction> parsed = parseInteractions(inputFile);
+            schema = parsed.removeFirst();
+            interactions.addAll(parsed);
         }
-        convertToFiles(inputFile.getParentFile(), interactions);
+        if (schema == null) {
+            System.out.println("No input data found. Exiting...");
+            System.exit(1);
+        }
+        convertToFiles(inputFile.getParentFile(), schema, interactions);
     }
 
     private static List<Interaction> parseInteractions(File input) {
@@ -56,8 +63,8 @@ public class Main {
         return interactions;
     }
 
-    private static void convertToFiles(File inputParentFile, List<Interaction> interactions) {
+    private static void convertToFiles(File inputParentFile, Interaction schema, List<Interaction> interactions) {
         Neo4jConverter converter = new Neo4jConverter(inputParentFile);
-        converter.convertAndSave(interactions);
+        converter.convertAndSave(schema, interactions);
     }
 }
