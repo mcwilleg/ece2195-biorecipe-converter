@@ -7,13 +7,13 @@ import jakarta.ws.rs.core.MultivaluedMap;
 import java.io.File;
 import java.util.List;
 
-public class Neo4jConverter extends BioRecipeConverter {
-    public Neo4jConverter(File inputParentFile) {
-        super("neo4j", inputParentFile);
+public class Neo4jCsvConverter extends BioRecipeConverter {
+    public Neo4jCsvConverter(File inputParentFile) {
+        super("neo4j", ".csv", inputParentFile);
     }
 
     @Override
-    public MultivaluedMap<String, String> convertInteractions(File outputDirectory, List<Interaction> interactions) {
+    public MultivaluedMap<String, String> convertInteractions(List<Interaction> interactions) {
         MultivaluedMap<String, String> output = new MultivaluedHashMap<>();
         for (Interaction i : interactions) {
             String regulator = i.getRegulator().getName();

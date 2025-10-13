@@ -1,8 +1,8 @@
 package edu.pitt.egm22;
 
 import edu.pitt.egm22.biorecipe.Interaction;
-import edu.pitt.egm22.biorecipe.Parser;
-import edu.pitt.egm22.output.Neo4jConverter;
+import edu.pitt.egm22.biorecipe.StaticParser;
+import edu.pitt.egm22.output.Neo4jCypherConverter;
 
 import java.io.File;
 import java.io.IOException;
@@ -57,14 +57,14 @@ public class Main {
         List<Interaction> interactions = new ArrayList<>();
         while(scanner.hasNextLine()) {
             String nextLine = scanner.nextLine();
-            Interaction interaction = Parser.parseInteraction(nextLine);
+            Interaction interaction = StaticParser.parseInteraction(nextLine);
             interactions.add(interaction);
         }
         return interactions;
     }
 
     private static void convertToFiles(File inputParentFile, Interaction schema, List<Interaction> interactions) {
-        Neo4jConverter converter = new Neo4jConverter(inputParentFile);
+        Neo4jCypherConverter converter = new Neo4jCypherConverter(inputParentFile);
         converter.convertAndSave(schema, interactions);
     }
 }

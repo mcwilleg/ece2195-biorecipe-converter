@@ -22,10 +22,12 @@ public abstract class BioRecipeConverter {
     private final File inputParentFile;
 
     protected final String converterType;
+    protected final String fileExtension;
 
-    public BioRecipeConverter(String converterType, File inputParentFile) {
+    public BioRecipeConverter(String converterType, String fileExtension, File inputParentFile) {
         this.converterType = converterType;
         this.inputParentFile = inputParentFile;
+        this.fileExtension = fileExtension;
     }
 
     public void convertAndSave(Interaction schema, List<Interaction> interactions) {
@@ -53,7 +55,7 @@ public abstract class BioRecipeConverter {
             System.out.println("Output directory could not be created. Exiting...");
             System.exit(1);
         }
-        MultivaluedMap<String, String> converted = convertInteractions(outputDirectory, interactions);
+        MultivaluedMap<String, String> converted = convertInteractions(interactions);
         writeToFile(outputPath, schema, converted);
     }
 
@@ -61,8 +63,10 @@ public abstract class BioRecipeConverter {
         for (Map.Entry<String, List<String>> entry : converted.entrySet()) {
             String fileName = cleanFileName(entry.getKey());
             List<String> lines = entry.getValue();
-            try (FileWriter writer = new FileWriter(outputPath + '/' + fileName + ".csv")) {
-                writer.write(getSchemaLine(schema) + "\n");
+            try (FileWriter writer = new FileWriter(outputPath + '/' + fileName + fileExtension)) {
+                if (schema != null) {
+                    writer.write(getSchemaLine(schema) + "\n");
+                }
                 for (String line : lines) {
                     writer.write(line + "\n");
                 }
@@ -78,7 +82,7 @@ public abstract class BioRecipeConverter {
         return URLEncoder.encode(fileName, Charset.defaultCharset());
     }
 
-    public abstract MultivaluedMap<String, String> convertInteractions(File outputDirectory, List<Interaction> interactions);
+    public abstract MultivaluedMap<String, String> convertInteractions(List<Interaction> interactions);
 
     public abstract String getSchemaLine(Interaction schema);
 }
