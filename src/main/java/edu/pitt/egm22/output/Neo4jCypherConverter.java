@@ -4,6 +4,7 @@ import edu.pitt.egm22.biorecipe.Element;
 import edu.pitt.egm22.biorecipe.Interaction;
 import org.apache.commons.lang3.reflect.FieldUtils;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.lang.reflect.Field;
@@ -19,27 +20,39 @@ public class Neo4jCypherConverter extends BioRecipeConverter {
     }
 
     @Override
-    public void writeFiles(String outputPath, List<Interaction> interactions) throws IOException {
+    public void writeFiles(File outputDir, List<Interaction> interactions) throws IOException {
         Map<String, Element> nodeMap = new HashMap<>();
         Map<String, Interaction> edgeMap = new HashMap<>();
         for (Interaction i : interactions) {
-            nodeMap.put(i.getRegulator().getName(), i.getRegulator());
-            nodeMap.put(i.getRegulated().getName(), i.getRegulated());
-            edgeMap.put(i.getRegulator().getName(), i);
+            boolean regulatorValid = isValidNode(i.getRegulator());
+            boolean regulatedValid = isValidNode(i.getRegulated());
+            if (regulatorValid) {
+                nodeMap.put(i.getRegulator().getName(), i.getRegulator());
+            }
+            if (regulatedValid) {
+                nodeMap.put(i.getRegulated().getName(), i.getRegulated());
+            }
+            if (regulatorValid && regulatedValid) {
+                edgeMap.put(i.getRegulator().getName(), i);
+            }
         }
 
         String fileName = "node-creation";
-        String outputFilePath = outputPath + "/" + fileName + fileExtension;
-        try (FileWriter writer = new FileWriter(outputFilePath)) {
+        File outputFile = outputDir.toPath().resolve(fileName + fileExtension).toFile();
+        try (FileWriter writer = new FileWriter(outputFile)) {
             for (String node : nodeMap.keySet()) {
                 String nodeType = nodeMap.get(node).getType();
                 String propertyMap = convertToPropertyMap(nodeMap.get(node));
                 String createNodeQuery = CREATE_NODE
                         .replace("%node_type%", nodeType)
                         .replace("%property_map%", propertyMap);
-                writer.write(createNodeQuery);
+                writer.write(createNodeQuery + "\n");
             }
         }
+    }
+
+    private boolean isValidNode(Element e) {
+        return !e.getName().isBlank();
     }
 
     private String convertToPropertyMap(Element e) {

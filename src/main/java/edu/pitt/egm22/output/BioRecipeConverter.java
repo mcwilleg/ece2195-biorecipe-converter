@@ -2,6 +2,7 @@ package edu.pitt.egm22.output;
 
 import edu.pitt.egm22.biorecipe.Interaction;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -16,7 +17,11 @@ public abstract class BioRecipeConverter {
         this.fileExtension = fileExtension;
     }
 
-    public abstract void writeFiles(String outputPath, List<Interaction> interactions) throws IOException;
+    public final void outputToFile(File outputDirectory, List<Interaction> interactions) throws IOException {
+        writeFiles(outputDirectory, interactions);
+    }
+
+    protected abstract void writeFiles(File outputDir, List<Interaction> interactions) throws IOException;
 
     public final String getTypeString() {
         return typeString;

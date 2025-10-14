@@ -4,6 +4,7 @@ import edu.pitt.egm22.biorecipe.Interaction;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 
+import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.List;
@@ -16,7 +17,7 @@ public class Neo4jCsvConverter extends BioRecipeConverter {
     }
 
     @Override
-    public void writeFiles(String outputPath, List<Interaction> interactions) throws IOException {
+    public void writeFiles(File outputDir, List<Interaction> interactions) throws IOException {
         MultivaluedMap<String, String> output = new MultivaluedHashMap<>();
         for (Interaction i : interactions) {
             String regulator = i.getRegulator().getName();
@@ -25,8 +26,8 @@ public class Neo4jCsvConverter extends BioRecipeConverter {
         }
         for (Map.Entry<String, List<String>> entry : output.entrySet()) {
             String fileName = entry.getKey();
-            String outputFilePath = outputPath + "/" + fileName + fileExtension;
-            try (FileWriter writer = new FileWriter(outputFilePath)) {
+            File outputFile = outputDir.toPath().resolve(fileName + fileExtension).toFile();
+            try (FileWriter writer = new FileWriter(outputFile)) {
                 writer.write("Regulated Name\n");
                 writer.write(entry.getValue().getFirst() + "\n");
             }

@@ -16,7 +16,7 @@ import java.util.List;
 public class Main {
     private static final String timestampFormat = "yyyyMMdd-HHmmss";
 
-    private static final String defaultInputPath = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input/original_Q4_LLaMa.csv";
+    private static final String defaultInputPath = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input/Q4_LLaMa.xlsx";
 
     public static void main(String[] args) {
         String inputPath = defaultInputPath;
@@ -37,7 +37,11 @@ public class Main {
         String typeString = converter.getTypeString();
         String outputPath = String.join("_", inputParentPath + '/' + "output", typeString, timestamp);
         try {
-            converter.writeFiles(outputPath, interactions);
+            File outputDirectory = new File(outputPath);
+            if(!outputDirectory.mkdirs()) {
+                throw new IOException("failed to create necessary output directories");
+            }
+            converter.outputToFile(outputDirectory, interactions);
         } catch (IOException e) {
             System.err.println("IO error writing to output files: " + e.getMessage());
             System.exit(1);
