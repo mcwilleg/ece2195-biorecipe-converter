@@ -3,6 +3,8 @@ package edu.pitt.egm22.output;
 import edu.pitt.egm22.biorecipe.Element;
 import edu.pitt.egm22.biorecipe.Interaction;
 import org.apache.commons.lang3.reflect.FieldUtils;
+import org.apache.commons.text.RandomStringGenerator;
+import org.apache.commons.text.WordUtils;
 
 import java.io.File;
 import java.io.FileWriter;
@@ -13,7 +15,7 @@ import java.util.List;
 import java.util.Map;
 
 public class Neo4jCypherConverter extends BioRecipeConverter {
-    private static final String CREATE_NODE = "CREATE (n:%node_type% %property_map%)";
+    private static final String CREATE_NODE = "CREATE (%variable%:%node_type% %property_map%)";
 
     public Neo4jCypherConverter() {
         super("neo4j", ".txt");
@@ -39,12 +41,14 @@ public class Neo4jCypherConverter extends BioRecipeConverter {
 
         String fileName = "node-creation";
         File outputFile = outputDir.toPath().resolve(fileName + fileExtension).toFile();
+        RandomStringGenerator random = RandomStringGenerator.builder().withinRange('a', 'z').get();
         try (FileWriter writer = new FileWriter(outputFile)) {
             for (String node : nodeMap.keySet()) {
                 String nodeType = nodeMap.get(node).getType();
                 String propertyMap = convertToPropertyMap(nodeMap.get(node));
                 String createNodeQuery = CREATE_NODE
-                        .replace("%node_type%", nodeType)
+                        .replace("%variable%", random.generate(8))
+                        .replace("%node_type%", cleanNodeType(nodeType))
                         .replace("%property_map%", propertyMap);
                 writer.write(createNodeQuery + "\n");
             }
@@ -53,6 +57,10 @@ public class Neo4jCypherConverter extends BioRecipeConverter {
 
     private boolean isValidNode(Element e) {
         return !e.getName().isBlank();
+    }
+
+    private String cleanNodeType(String nodeTypeRaw) {
+        return WordUtils.capitalize(nodeTypeRaw).replaceAll("[- ]", "");
     }
 
     private String convertToPropertyMap(Element e) {

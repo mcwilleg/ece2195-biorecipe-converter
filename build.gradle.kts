@@ -11,6 +11,7 @@ repositories {
 
 dependencies {
     implementation("org.apache.commons:commons-lang3:3.19.0")
+    implementation("org.apache.commons:commons-text:1.14.0")
     implementation("commons-io:commons-io:2.20.0")
     implementation("jakarta.ws.rs:jakarta.ws.rs-api:4.0.0")
     implementation("org.dhatim:fastexcel-reader:0.19.0")

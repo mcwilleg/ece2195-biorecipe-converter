@@ -16,7 +16,8 @@ import java.util.List;
 public class Main {
     private static final String timestampFormat = "yyyyMMdd-HHmmss";
 
-    private static final String defaultInputPath = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input/Q4_LLaMa.xlsx";
+    private static final String defaultInputPath = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/" +
+            "ece2195-gbm-kg/input/Q4_LLaMa_manual-clean.xlsx";
 
     public static void main(String[] args) {
         String inputPath = defaultInputPath;
