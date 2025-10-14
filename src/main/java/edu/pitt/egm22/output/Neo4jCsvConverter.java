@@ -4,27 +4,32 @@ import edu.pitt.egm22.biorecipe.Interaction;
 import jakarta.ws.rs.core.MultivaluedHashMap;
 import jakarta.ws.rs.core.MultivaluedMap;
 
-import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.List;
+import java.util.Map;
 
+@SuppressWarnings("unused")
 public class Neo4jCsvConverter extends BioRecipeConverter {
-    public Neo4jCsvConverter(File inputParentFile) {
-        super("neo4j", ".csv", inputParentFile);
+    public Neo4jCsvConverter() {
+        super("neo4j", ".csv");
     }
 
     @Override
-    public MultivaluedMap<String, String> convertInteractions(List<Interaction> interactions) {
+    public void writeFiles(String outputPath, List<Interaction> interactions) throws IOException {
         MultivaluedMap<String, String> output = new MultivaluedHashMap<>();
         for (Interaction i : interactions) {
             String regulator = i.getRegulator().getName();
             String regulated = i.getRegulated().getName();
             output.add(regulator, regulated);
         }
-        return output;
-    }
-
-    @Override
-    public String getSchemaLine(Interaction schema) {
-        return schema.getRegulated().getName();
+        for (Map.Entry<String, List<String>> entry : output.entrySet()) {
+            String fileName = entry.getKey();
+            String outputFilePath = outputPath + "/" + fileName + fileExtension;
+            try (FileWriter writer = new FileWriter(outputFilePath)) {
+                writer.write("Regulated Name\n");
+                writer.write(entry.getValue().getFirst() + "\n");
+            }
+        }
     }
 }
