@@ -7,9 +7,11 @@ input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/in
 
 hgnc_dict = {}
 db_dict = {}
-edge_dict = {}
 head_edge_dict = {}
 tail_edge_dict = {}
+
+node_dict = {}
+edge_dict = {}
 
 def process_files():
     start_time = time.perf_counter()
@@ -22,6 +24,8 @@ def process_files():
                 for ws in wb:
                     for row in ws.iter_rows(min_row=2, min_col=2, max_col=29):
                         interactions.append(extract_row_data(row))
+    elapsed_time = time.perf_counter() - start_time
+    print(f"File extraction completed in {elapsed_time:.3f} seconds.")
     for i in interactions:
         h = i["regulator"]
         t = i["regulated"]
@@ -36,7 +40,7 @@ def process_files():
     condense_nodes()
     elapsed_time = time.perf_counter() - start_time
     print(f"Interactions: {len(interactions)}, (Max Unique Nodes: {len(interactions) * 2})")
-    print(f"Unique Nodes: {len(hgnc_dict) + len(db_dict)}")
+    print(f"Unique Nodes: {len(node_dict)}")
     print(f"Unique Edges: {len(edge_dict)}")
     print(f"Completed in {elapsed_time:.3f} seconds.")
 
@@ -58,12 +62,16 @@ def save_node(node):
 
 
 def condense_nodes():
-    for key in hgnc_dict.keys():
+    for key in hgnc_dict:
         node = hgnc_dict[key]
         db_key = get_db_key(node)
-        if db_key in db_dict.keys():
+        if db_key in db_dict:
             db_node = db_dict.pop(db_key)
             hgnc_dict[key] = merge_nodes(node, db_node)
+    for node in hgnc_dict:
+        node_dict[hgnc_dict[node]["uid"]] = node
+    for node in db_dict:
+        node_dict[db_dict[node]["uid"]] = node
 
 
 def save_edge(i):
@@ -78,8 +86,10 @@ def save_edge(i):
     edge_dict[uid] = edge_data
     head_edges = head_edge_dict.get(h, [])
     head_edges.append(uid)
+    head_edge_dict[h] = head_edges
     tail_edges = tail_edge_dict.get(t, [])
     tail_edges.append(uid)
+    tail_edge_dict[t] = tail_edges
 
 
 def merge_nodes(original, new):
@@ -98,14 +108,16 @@ def merge_nodes(original, new):
         original["compartment_id"] = new["compartment_id"]
     original_id = original["uid"]
     new_id = new["uid"]
-    head_edges = head_edge_dict.get(new_id, [])
-    for e in head_edges:
-        edge_data = edge_dict[e]
-        edge_data["head"] = original_id
-    tail_edges = tail_edge_dict.get(new_id, [])
-    for e in tail_edges:
-        edge_data = edge_dict[e]
-        edge_data["tail"] = original_id
+    if new_id in head_edge_dict:
+        head_edges = head_edge_dict[new_id]
+        for e in head_edges:
+            edge_data = edge_dict[e]
+            edge_data["head"] = original_id
+    if new_id in tail_edge_dict:
+        tail_edges = tail_edge_dict[new_id]
+        for e in tail_edges:
+            edge_data = edge_dict[e]
+            edge_data["tail"] = original_id
     return original
 
 
