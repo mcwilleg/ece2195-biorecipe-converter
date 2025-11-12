@@ -2,8 +2,13 @@ import os
 import time
 import uuid
 import openpyxl
+import datetime
+import json
+import re
 
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
+
+valid_node_types = ["protein", "gene", "chemical", "RNA", "protein family", "biological process"]
 
 hgnc_dict = {}
 db_dict = {}
@@ -45,6 +50,59 @@ def process_files():
     print(f"Completed in {elapsed_time:.3f} seconds.")
 
 
+def write_cypher_queries():
+    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    output_path = f"{input_path}/output"
+    os.makedirs(output_path, exist_ok=True)
+    file_name = f"cypher_queries_{timestamp}.txt"
+    with open(f"{output_path}/{file_name}", "w") as f:
+        for node in node_dict:
+            node_query = get_create_node_cypher_query(node_dict[node])
+            f.write(f"{node_query}\n")
+        for edge in edge_dict:
+            edge_query = get_create_edge_cypher_query(edge_dict[edge])
+            f.write(f"{edge_query}\n")
+
+
+def get_create_node_cypher_query(node):
+    uid = node.pop("uid")
+    node_type = get_valid_node_type(node["type"])
+    clean_obj_for_query(node)
+    property_map = json.dumps(node)
+    property_map = re.sub(r"\"([a-z_]+)\": ", r"\1: ", property_map)
+    property_map = re.sub(r"(: \")", r": '", property_map)
+    property_map = re.sub(r"(\",)", r"',", property_map)
+    property_map = re.sub(r"(\"})", r"'}", property_map)
+    return f"CREATE ({uid}:{node_type} {property_map})"
+
+
+def get_create_edge_cypher_query(edge):
+    h = edge.pop("head")
+    t = edge.pop("tail")
+    edge.pop("uid")
+    clean_obj_for_query(edge)
+    property_map = json.dumps(edge)
+    property_map = re.sub(r"\"([a-z_]+)\": ", r"\1: ", property_map)
+    return f"CREATE ({h})-[:REGULATES {property_map}]->({t})"
+
+
+def clean_obj_for_query(obj):
+    for key in obj:
+        value = obj[key]
+        if value:
+            value = value.replace("'", "")
+            value = value.replace('"', "")
+        obj[key] = value
+
+
+def get_valid_node_type(node_type):
+    if node_type:
+        node_type = node_type.lower()
+        if node_type in valid_node_types:
+            return str(node_type).replace(" ", "_")
+    return "unknown"
+
+
 def save_node(node):
     if node["hgnc_symbol"]:
         existing = hgnc_dict.get(node["hgnc_symbol"])
@@ -69,9 +127,9 @@ def condense_nodes():
             db_node = db_dict.pop(db_key)
             hgnc_dict[key] = merge_nodes(node, db_node)
     for node in hgnc_dict:
-        node_dict[hgnc_dict[node]["uid"]] = node
+        node_dict[hgnc_dict[node]["uid"]] = hgnc_dict[node]
     for node in db_dict:
-        node_dict[db_dict[node]["uid"]] = node
+        node_dict[db_dict[node]["uid"]] = db_dict[node]
 
 
 def save_edge(i):
@@ -83,6 +141,8 @@ def save_edge(i):
         "head": h,
         "tail": t,
     }
+    for p in ["sign", "connection_type", "mechanism", "site", "cell_line", "cell_type", "tissue_type", "organism", "paper_ids",]:
+        edge_data[p] = i[p]
     edge_dict[uid] = edge_data
     head_edges = head_edge_dict.get(h, [])
     head_edges.append(uid)
@@ -124,17 +184,23 @@ def merge_nodes(original, new):
 def is_valid_node(node):
     if not node["name"]:
         return False
-    if node["hgnc_symbol"]:
-        return True
-    elif node["db_source"] and node["db_id"]:
+    if has_valid_hgnc_symbol(node) or has_valid_db_key(node):
         return True
     return False
 
 
+def has_valid_hgnc_symbol(node):
+    return node["hgnc_symbol"] and re.match(r"[\w ]+", node["hgnc_symbol"])
+
+
+def has_valid_db_key(node):
+    return node["db_source"] and node["db_id"] and re.match(r"[\w ]+:[\w ]+", get_db_key(node))
+
+
 def extract_row_data(row):
     regulator = {
-        "uid": generate_uid(),
         "name": row[0].value,
+        "uid": generate_uid(),
         "type": row[1].value,
         "subtype": row[2].value,
         "hgnc_symbol": row[3].value,
@@ -143,10 +209,10 @@ def extract_row_data(row):
         "compartment": row[6].value,
         "compartment_id": row[7].value,
     }
-    strip_values(regulator)
+    clean_values(regulator)
     regulated = {
-        "uid": generate_uid(),
         "name": row[8].value,
+        "uid": generate_uid(),
         "type": row[9].value,
         "subtype": row[10].value,
         "hgnc_symbol": row[11].value,
@@ -155,7 +221,7 @@ def extract_row_data(row):
         "compartment": row[14].value,
         "compartment_id": row[15].value,
     }
-    strip_values(regulated)
+    clean_values(regulated)
     interaction = {
         "regulator": regulator,
         "regulated": regulated,
@@ -170,7 +236,7 @@ def extract_row_data(row):
         "statements": row[26].value,
         "paper_ids": row[27].value,
     }
-    strip_values(interaction)
+    clean_values(interaction)
     return interaction
 
 
@@ -182,11 +248,16 @@ def generate_uid():
     return f"x{str(uuid.uuid4()).replace("-", "")}"
 
 
-def strip_values(d):
+def clean_values(d):
     for key, value in d.items():
         if type(value) == "<class 'str'>":
-            d[key] = value.strip()
+            d[key] = clean_value(value)
+
+
+def clean_value(s):
+    return s.strip()
 
 
 if __name__ == '__main__':
     process_files()
+    write_cypher_queries()
