@@ -1,14 +1,16 @@
-import os
-import time
-import uuid
-import openpyxl
 import datetime
 import json
+import os
 import re
+import time
+
+import openpyxl
 
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
 
 valid_node_types = ["protein", "gene", "chemical", "RNA", "protein family", "biological process"]
+
+last_uid = 0
 
 hgnc_dict = {}
 db_dict = {}
@@ -56,24 +58,29 @@ def write_cypher_queries():
     os.makedirs(output_path, exist_ok=True)
     file_name = f"cypher_queries_{timestamp}.txt"
     with open(f"{output_path}/{file_name}", "w") as f:
+        f.write("CREATE\n")
+        node_i = 0
         for node in node_dict:
             node_query = get_create_node_cypher_query(node_dict[node])
-            f.write(f"{node_query}\n")
+            if 0 < node_i < len(node_dict):
+                f.write(",\n")
+            f.write(f"{node_query}")
+            node_i += 1
+        f.write(";\n")
         for edge in edge_dict:
             edge_query = get_create_edge_cypher_query(edge_dict[edge])
-            f.write(f"{edge_query}\n")
+            f.write(f"{edge_query};\n")
 
 
 def get_create_node_cypher_query(node):
-    uid = node.pop("uid")
-    node_type = get_valid_node_type(node["type"])
+    uid = node["uid"]
     clean_obj_for_query(node)
     property_map = json.dumps(node)
     property_map = re.sub(r"\"([a-z_]+)\": ", r"\1: ", property_map)
     property_map = re.sub(r"(: \")", r": '", property_map)
     property_map = re.sub(r"(\",)", r"',", property_map)
     property_map = re.sub(r"(\"})", r"'}", property_map)
-    return f"CREATE ({uid}:{node_type} {property_map})"
+    return f"({uid}:Node {property_map})"
 
 
 def get_create_edge_cypher_query(edge):
@@ -83,7 +90,8 @@ def get_create_edge_cypher_query(edge):
     clean_obj_for_query(edge)
     property_map = json.dumps(edge)
     property_map = re.sub(r"\"([a-z_]+)\": ", r"\1: ", property_map)
-    return f"CREATE ({h})-[:REGULATES {property_map}]->({t})"
+    return f"MATCH (h:Node) MATCH (t:Node) WHERE h.uid = \'{h}\' AND t.uid = \'{t}\' MERGE (h)-[:REGULATES {property_map}]->(t) FINISH"
+    # return f"CREATE ({h})-[:REGULATES {property_map}]->({t})"
 
 
 def clean_obj_for_query(obj):
@@ -245,13 +253,18 @@ def get_db_key(node):
 
 
 def generate_uid():
-    return f"x{str(uuid.uuid4()).replace("-", "")}"
+    global last_uid
+    uid = f"x{str(last_uid)}"
+    last_uid += 1
+    return uid
 
 
 def clean_values(d):
     for key, value in d.items():
         if type(value) == "<class 'str'>":
             d[key] = clean_value(value)
+        if not value:
+            d[key] = ""
 
 
 def clean_value(s):
@@ -259,5 +272,6 @@ def clean_value(s):
 
 
 if __name__ == '__main__':
+    last_uid = 0
     process_files()
     write_cypher_queries()
