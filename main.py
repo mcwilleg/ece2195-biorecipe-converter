@@ -27,7 +27,8 @@ node_dict = {}
 edge_dict = {}
 
 def process_files():
-    start_time = time.perf_counter()
+    start_extraction_time = time.perf_counter()
+    print(f"Extracting interactions from {input_path}...")
     interactions = []
     for filename in os.listdir(input_path):
         if filename.endswith(".xlsx") and not filename.startswith("~"):
@@ -37,8 +38,6 @@ def process_files():
                 for ws in wb:
                     for row in ws.iter_rows(min_row=2, min_col=2, max_col=29):
                         interactions.append(extract_row_data(row))
-    elapsed_time = time.perf_counter() - start_time
-    print(f"File extraction completed in {elapsed_time:.3f} seconds.")
     for i in interactions:
         h = i["regulator"]
         t = i["regulated"]
@@ -54,6 +53,8 @@ def process_files():
     print(f"Interactions: {len(interactions)}, (Max Unique Nodes: {len(interactions) * 2})")
     print(f"Unique Nodes: {len(node_dict)}")
     print(f"Unique Edges: {len(edge_dict)}")
+    elapsed_time = time.perf_counter() - start_extraction_time
+    print(f"Completed in {elapsed_time:.3f} seconds.")
 
 
 def execute_neo4j_queries():
