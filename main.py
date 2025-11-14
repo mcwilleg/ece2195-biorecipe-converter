@@ -3,8 +3,14 @@ import json
 import os
 import re
 import time
+import progressbar
 
 import openpyxl
+from neo4j import GraphDatabase
+
+uri = "neo4j://localhost:7687"
+username = "neo4j"
+password = "password"
 
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
 
@@ -45,11 +51,55 @@ def process_files():
         if h_valid and t_valid:
             save_edge(i)
     condense_nodes()
-    elapsed_time = time.perf_counter() - start_time
     print(f"Interactions: {len(interactions)}, (Max Unique Nodes: {len(interactions) * 2})")
     print(f"Unique Nodes: {len(node_dict)}")
     print(f"Unique Edges: {len(edge_dict)}")
-    print(f"Completed in {elapsed_time:.3f} seconds.")
+
+
+def execute_neo4j_queries():
+    driver = GraphDatabase.driver(uri, auth=(username, password))
+    with driver.session() as session:
+        print("Adding nodes to database...")
+        bar = progressbar.ProgressBar(max_value=len(node_dict))
+        i = 0
+        for node in node_dict:
+            session.run("""
+            MERGE (:Node {
+                name: $name,
+                uid: $uid,
+                type: $type,
+                subtype: $subtype,
+                hgnc_symbol: $hgnc_symbol,
+                db_source: $db_source,
+                db_id: $db_id,
+                compartment: $compartment,
+                compartment_id: $compartment_id
+            })
+            """, node_dict[node])
+            bar.update(i + 1)
+            i += 1
+        print("Adding edges to database...")
+        bar.finish()
+        bar = progressbar.ProgressBar(max_value=len(edge_dict))
+        i = 0
+        for edge in edge_dict:
+            session.run("""
+            MATCH (h:Node) MATCH (t:Node) WHERE h.uid = $head AND t.uid = $tail MERGE (h)-[:REGULATES {
+                sign: $sign,
+                connection_type: $connection_type,
+                mechanism: $mechanism,
+                site: $site,
+                cell_line: $cell_line,
+                cell_type: $cell_type,
+                tissue_type: $tissue_type,
+                organism: $organism,
+                paper_ids: $paper_ids
+            }]->(t) FINISH
+            """, edge_dict[edge])
+            bar.update(i + 1)
+            i += 1
+        bar.finish()
+    pass
 
 
 def write_cypher_queries():
@@ -58,7 +108,7 @@ def write_cypher_queries():
     os.makedirs(output_path, exist_ok=True)
     file_name = f"cypher_queries_{timestamp}.txt"
     with open(f"{output_path}/{file_name}", "w") as f:
-        f.write("CREATE\n")
+        f.write("MERGE\n")
         node_i = 0
         for node in node_dict:
             node_query = get_create_node_cypher_query(node_dict[node])
@@ -80,7 +130,7 @@ def get_create_node_cypher_query(node):
     property_map = re.sub(r"(: \")", r": '", property_map)
     property_map = re.sub(r"(\",)", r"',", property_map)
     property_map = re.sub(r"(\"})", r"'}", property_map)
-    return f"({uid}:Node {property_map})"
+    return f"MERGE ({uid}:Node {property_map});"
 
 
 def get_create_edge_cypher_query(edge):
@@ -272,6 +322,8 @@ def clean_value(s):
 
 
 if __name__ == '__main__':
+    start_time = time.perf_counter()
     last_uid = 0
     process_files()
-    write_cypher_queries()
+    execute_neo4j_queries()
+    print(f"Completed in {(time.perf_counter() - start_time):.3f} seconds.")
