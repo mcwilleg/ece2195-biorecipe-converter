@@ -1,20 +1,23 @@
-import datetime
 import json
 import os
 import re
 import time
-import progressbar
 
 import openpyxl
+import progressbar
 from neo4j import GraphDatabase
 
 uri = "neo4j://localhost:7687"
 username = "neo4j"
 password = "password"
 
+overwrite_existing_graph = True
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
 
 valid_node_types = ["protein", "gene", "chemical", "RNA", "protein family", "biological process"]
+invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
+                      "custom", "not found", "not mentioned", "not provided", "various", "unknown"]
+max_db_string_length = 20
 
 last_uid = 0
 
@@ -37,24 +40,93 @@ def process_files():
                 wb = openpyxl.load_workbook(full_path)
                 for ws in wb:
                     for row in ws.iter_rows(min_row=2, min_col=2, max_col=29):
-                        interactions.append(extract_row_data(row))
-    for i in interactions:
-        h = i["regulator"]
-        t = i["regulated"]
-        h_valid = is_valid_node(h)
-        t_valid = is_valid_node(t)
-        if h_valid:
-            save_node(h)
-        if t_valid:
-            save_node(t)
-        if h_valid and t_valid:
-            save_edge(i)
-    condense_nodes()
-    print(f"Interactions: {len(interactions)}, (Max Unique Nodes: {len(interactions) * 2})")
-    print(f"Unique Nodes: {len(node_dict)}")
-    print(f"Unique Edges: {len(edge_dict)}")
-    elapsed_time = time.perf_counter() - start_extraction_time
-    print(f"Completed in {elapsed_time:.3f} seconds.")
+                        i = extract_row_data(row)
+                        interactions.append(i)
+    print(f"Total interactions found: {len(interactions)}")
+    print(f"Completed in {time.perf_counter() - start_extraction_time:.3f} seconds.")
+    nodes_added = 0
+    edges_added = 0
+    driver = GraphDatabase.driver(uri, auth=(username, password))
+    with driver.session() as session:
+        if overwrite_existing_graph:
+            print("Deleting existing nodes and relationships...")
+            session.run("""
+            MATCH (n) DETACH DELETE n
+            """)
+        time.sleep(2)
+        print("Adding interactions to database...")
+        bar = progressbar.ProgressBar(max_value=len(interactions))
+        bar_i = 0
+        unique_db_ids = {}
+        for i in interactions:
+            h = i.pop("regulator")
+            t = i.pop("regulated")
+            h_valid = is_valid_node(h)
+            t_valid = is_valid_node(t)
+            if h_valid:
+                for db_id in h["db_ids"]:
+                    if db_id not in unique_db_ids:
+                        unique_db_ids[db_id] = True
+            if t_valid:
+                for db_id in t["db_ids"]:
+                    if db_id not in unique_db_ids:
+                        unique_db_ids[db_id] = True
+            if h_valid and t_valid:
+                session.run("""
+                CREATE
+                (h {name: $head_name, db_ids: $head_db_ids}),
+                (t {name: $tail_name, db_ids: $tail_db_ids}),
+                (h)-[:REGULATES $edge_props]->(t)
+                FINISH
+                """, {
+                    "head_name": h["name"],
+                    "head_db_ids": h["db_ids"],
+                    "tail_name": h["name"],
+                    "tail_db_ids": h["db_ids"],
+                    "edge_props": i,
+                })
+                nodes_added += 2
+                edges_added += 1
+            elif h_valid:
+                session.run("""
+                CREATE
+                (h {name: $name, db_ids: $db_ids})
+                FINISH
+                """, h)
+                nodes_added += 1
+            elif t_valid:
+                session.run("""
+                CREATE
+                (t {name: $name, db_ids: $db_ids})
+                FINISH
+                """, t)
+                nodes_added += 1
+            bar.update(bar_i + 1)
+            bar_i += 1
+        bar.finish()
+        print(f"Total entities created: {nodes_added}")
+        print(f"Total relationships created: {edges_added}")
+        print(f"Merging nodes by database IDs...")
+        bar = progressbar.ProgressBar(max_value=len(interactions))
+        bar_i = 0
+        for db_id in unique_db_ids:
+            session.run("""
+            MATCH (n) WHERE $merging_id IN n.db_ids
+            WITH collect(n) AS nodes
+            CALL apoc.refactor.mergeNodes(nodes, {
+                properties: {
+                    name: 'discard',
+                    db_ids: 'combine'
+                },
+                mergeRels: true,
+                produceSelfRel: false
+            })
+            YIELD node
+            FINISH
+            """, {"merging_id": db_id})
+            bar.update(bar_i + 1)
+            bar_i += 1
+        bar.finish()
 
 
 def execute_neo4j_queries():
@@ -103,26 +175,6 @@ def execute_neo4j_queries():
     pass
 
 
-def write_cypher_queries():
-    timestamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    output_path = f"{input_path}/output"
-    os.makedirs(output_path, exist_ok=True)
-    file_name = f"cypher_queries_{timestamp}.txt"
-    with open(f"{output_path}/{file_name}", "w") as f:
-        f.write("MERGE\n")
-        node_i = 0
-        for node in node_dict:
-            node_query = get_create_node_cypher_query(node_dict[node])
-            if 0 < node_i < len(node_dict):
-                f.write(",\n")
-            f.write(f"{node_query}")
-            node_i += 1
-        f.write(";\n")
-        for edge in edge_dict:
-            edge_query = get_create_edge_cypher_query(edge_dict[edge])
-            f.write(f"{edge_query};\n")
-
-
 def get_create_node_cypher_query(node):
     uid = node["uid"]
     clean_obj_for_query(node)
@@ -152,14 +204,6 @@ def clean_obj_for_query(obj):
             value = value.replace("'", "")
             value = value.replace('"', "")
         obj[key] = value
-
-
-def get_valid_node_type(node_type):
-    if node_type:
-        node_type = node_type.lower()
-        if node_type in valid_node_types:
-            return str(node_type).replace(" ", "_")
-    return "unknown"
 
 
 def save_node(node):
@@ -243,44 +287,23 @@ def merge_nodes(original, new):
 def is_valid_node(node):
     if not node["name"]:
         return False
-    if has_valid_hgnc_symbol(node) or has_valid_db_key(node):
+    if node["db_ids"]:
         return True
     return False
 
 
 def has_valid_hgnc_symbol(node):
-    return node["hgnc_symbol"] and re.match(r"[\w ]+", node["hgnc_symbol"])
+    return node["hgnc_symbol"] and re.match(r"\w+", node["hgnc_symbol"])
 
 
 def has_valid_db_key(node):
-    return node["db_source"] and node["db_id"] and re.match(r"[\w ]+:[\w ]+", get_db_key(node))
+    return node["db_source"] and node["db_id"] and re.match(r"\w+:\w+", get_db_key(node))
 
 
 def extract_row_data(row):
-    regulator = {
-        "name": row[0].value,
-        "uid": generate_uid(),
-        "type": row[1].value,
-        "subtype": row[2].value,
-        "hgnc_symbol": row[3].value,
-        "db_source": row[4].value,
-        "db_id": row[5].value,
-        "compartment": row[6].value,
-        "compartment_id": row[7].value,
-    }
-    clean_values(regulator)
-    regulated = {
-        "name": row[8].value,
-        "uid": generate_uid(),
-        "type": row[9].value,
-        "subtype": row[10].value,
-        "hgnc_symbol": row[11].value,
-        "db_source": row[12].value,
-        "db_id": row[13].value,
-        "compartment": row[14].value,
-        "compartment_id": row[15].value,
-    }
-    clean_values(regulated)
+    clean_row(row)
+    regulator = extract_node_data(row, 0)
+    regulated = extract_node_data(row, 8)
     interaction = {
         "regulator": regulator,
         "regulated": regulated,
@@ -295,8 +318,30 @@ def extract_row_data(row):
         "statements": row[26].value,
         "paper_ids": row[27].value,
     }
-    clean_values(interaction)
     return interaction
+
+
+def extract_node_data(row, idx = 0):
+    node_ids = []
+    append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
+    append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
+    return {
+        "name": row[idx + 0].value,
+        "type": row[idx + 1].value,
+        "subtype": row[idx + 2].value,
+        "db_ids": node_ids,
+        "compartment": row[idx + 6].value,
+        "compartment_id": row[idx + 7].value,
+    }
+
+
+def append_valid_db_id(node_ids, db_name, db_id):
+    if is_valid_db_string(db_name) and is_valid_db_string(db_id):
+        node_ids.append(f"{db_name}:{db_id}")
+
+
+def is_valid_db_string(s):
+    return s and (s.lower() not in invalid_db_strings) and len(s) <= max_db_string_length and re.match(r"\w+", s)
 
 
 def get_db_key(node):
@@ -308,6 +353,14 @@ def generate_uid():
     uid = f"x{str(last_uid)}"
     last_uid += 1
     return uid
+
+
+def clean_row(a):
+    for c in a:
+        if not c.value:
+            c.value = ""
+        else:
+            c.value = clean_value(c.value)
 
 
 def clean_values(d):
@@ -326,5 +379,5 @@ if __name__ == '__main__':
     start_time = time.perf_counter()
     last_uid = 0
     process_files()
-    execute_neo4j_queries()
-    print(f"Completed in {(time.perf_counter() - start_time):.3f} seconds.")
+    # execute_neo4j_queries()
+    print(f"Completed all processes in {(time.perf_counter() - start_time):.3f} seconds.")
