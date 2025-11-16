@@ -55,7 +55,7 @@ def process_files():
             """)
         time.sleep(2)
         print("Adding interactions to database...")
-        bar = progressbar.ProgressBar(max_value=len(interactions))
+        bar = progressbar.ProgressBar(max_value=len(interactions) * 2)
         bar_i = 0
         unique_db_ids = {}
         for i in interactions:
@@ -101,13 +101,13 @@ def process_files():
                 FINISH
                 """, t)
                 nodes_added += 1
-            bar.update(bar_i + 1)
-            bar_i += 1
+            bar_i += 2
+            bar.update(bar_i)
         bar.finish()
         print(f"Total entities created: {nodes_added}")
         print(f"Total relationships created: {edges_added}")
         print(f"Merging nodes by database IDs...")
-        bar = progressbar.ProgressBar(max_value=len(interactions))
+        bar = progressbar.ProgressBar(max_value=len(unique_db_ids))
         bar_i = 0
         for db_id in unique_db_ids:
             session.run("""
@@ -118,14 +118,13 @@ def process_files():
                     name: 'discard',
                     db_ids: 'combine'
                 },
-                mergeRels: true,
                 produceSelfRel: false
             })
             YIELD node
             FINISH
             """, {"merging_id": db_id})
-            bar.update(bar_i + 1)
             bar_i += 1
+            bar.update(bar_i)
         bar.finish()
 
 
@@ -323,12 +322,13 @@ def extract_row_data(row):
 
 def extract_node_data(row, idx = 0):
     node_ids = []
-    append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
+    # append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
     append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
     return {
         "name": row[idx + 0].value,
         "type": row[idx + 1].value,
         "subtype": row[idx + 2].value,
+        "hgnc_symbol": row[idx + 3].value,
         "db_ids": node_ids,
         "compartment": row[idx + 6].value,
         "compartment_id": row[idx + 7].value,
