@@ -65,39 +65,67 @@ def process_files():
             t_valid = is_valid_node(t)
             if h_valid:
                 for db_id in h["db_ids"]:
-                    if db_id not in unique_db_ids:
-                        unique_db_ids[db_id] = True
+                    unique_db_ids[db_id] = True
             if t_valid:
                 for db_id in t["db_ids"]:
-                    if db_id not in unique_db_ids:
-                        unique_db_ids[db_id] = True
+                    unique_db_ids[db_id] = True
             if h_valid and t_valid:
-                session.run("""
-                CREATE
-                (h {name: $head_name, db_ids: $head_db_ids}),
-                (t {name: $tail_name, db_ids: $tail_db_ids}),
-                (h)-[:REGULATES $edge_props]->(t)
-                FINISH
-                """, {
-                    "head_name": h["name"],
-                    "head_db_ids": h["db_ids"],
-                    "tail_name": h["name"],
-                    "tail_db_ids": h["db_ids"],
-                    "edge_props": i,
-                })
+                parameters = {
+                        "head_name": h["name"],
+                        "head_db_ids": h["db_ids"],
+                        "tail_name": t["name"],
+                        "tail_db_ids": t["db_ids"],
+                        "edge_props": i,
+                }
+                sign = i.pop("sign")
+                connection_type = i.pop("connection_type")
+                if sign == "positive":
+                    if connection_type == "direct":
+                        session.run("""
+                        CREATE
+                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                        (h)-[:DIRECTLY_INDUCES $edge_props]->(t)
+                        FINISH
+                        """, parameters)
+                    elif connection_type == "indirect":
+                        session.run("""
+                        CREATE
+                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                        (h)-[:INDIRECTLY_INDUCES $edge_props]->(t)
+                        FINISH
+                        """, parameters)
+                elif sign == "negative":
+                    if connection_type == "direct":
+                        session.run("""
+                        CREATE
+                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                        (h)-[:DIRECTLY_INHIBITS $edge_props]->(t)
+                        FINISH
+                        """, parameters)
+                    elif connection_type == "indirect":
+                        session.run("""
+                        CREATE
+                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                        (h)-[:INDIRECTLY_INHIBITS $edge_props]->(t)
+                        FINISH
+                        """, parameters)
                 nodes_added += 2
                 edges_added += 1
             elif h_valid:
                 session.run("""
                 CREATE
-                (h {name: $name, db_ids: $db_ids})
+                (h:Node {name: $name, db_ids: $db_ids})
                 FINISH
                 """, h)
                 nodes_added += 1
             elif t_valid:
                 session.run("""
                 CREATE
-                (t {name: $name, db_ids: $db_ids})
+                (t:Node {name: $name, db_ids: $db_ids})
                 FINISH
                 """, t)
                 nodes_added += 1
@@ -115,7 +143,7 @@ def process_files():
             WITH collect(n) AS nodes
             CALL apoc.refactor.mergeNodes(nodes, {
                 properties: {
-                    name: 'discard',
+                    name: 'combine',
                     db_ids: 'combine'
                 },
                 produceSelfRel: false
