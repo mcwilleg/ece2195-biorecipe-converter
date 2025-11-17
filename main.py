@@ -1,4 +1,3 @@
-import json
 import os
 import re
 import time
@@ -14,20 +13,10 @@ password = "password"
 overwrite_existing_graph = True
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
 
-valid_node_types = ["protein", "gene", "chemical", "RNA", "protein family", "biological process"]
 invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
                       "custom", "not found", "not mentioned", "not provided", "various", "unknown"]
 max_db_string_length = 20
 
-last_uid = 0
-
-hgnc_dict = {}
-db_dict = {}
-head_edge_dict = {}
-tail_edge_dict = {}
-
-node_dict = {}
-edge_dict = {}
 
 def process_files():
     print(f"Extracting interactions from {input_path}...")
@@ -205,6 +194,5 @@ def clean_value(s):
 
 if __name__ == '__main__':
     start_time = time.perf_counter()
-    last_uid = 0
     process_files()
     print(f"Completed all processes in {(time.perf_counter() - start_time):.3f} seconds.")
