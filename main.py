@@ -30,9 +30,9 @@ node_dict = {}
 edge_dict = {}
 
 def process_files():
-    start_extraction_time = time.perf_counter()
     print(f"Extracting interactions from {input_path}...")
     interactions = []
+    bar = progressbar.ProgressBar()
     for filename in os.listdir(input_path):
         if filename.endswith(".xlsx") and not filename.startswith("~"):
             full_path = os.path.join(input_path, filename)
@@ -42,8 +42,9 @@ def process_files():
                     for row in ws.iter_rows(min_row=2, min_col=2, max_col=29):
                         i = extract_row_data(row)
                         interactions.append(i)
+                        bar.update(len(interactions))
+    bar.finish()
     print(f"Total interactions found: {len(interactions)}")
-    print(f"Completed in {time.perf_counter() - start_extraction_time:.3f} seconds.")
     nodes_added = 0
     edges_added = 0
     driver = GraphDatabase.driver(uri, auth=(username, password))
@@ -78,41 +79,22 @@ def process_files():
                         "edge_props": i,
                 }
                 sign = i.pop("sign")
-                connection_type = i.pop("connection_type")
                 if sign == "positive":
-                    if connection_type == "direct":
-                        session.run("""
-                        CREATE
-                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                        (h)-[:DIRECTLY_INDUCES $edge_props]->(t)
-                        FINISH
-                        """, parameters)
-                    elif connection_type == "indirect":
-                        session.run("""
-                        CREATE
-                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                        (h)-[:INDIRECTLY_INDUCES $edge_props]->(t)
-                        FINISH
-                        """, parameters)
+                    session.run("""
+                    CREATE
+                    (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                    (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                    (h)-[:PROMOTES $edge_props]->(t)
+                    FINISH
+                    """, parameters)
                 elif sign == "negative":
-                    if connection_type == "direct":
-                        session.run("""
-                        CREATE
-                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                        (h)-[:DIRECTLY_INHIBITS $edge_props]->(t)
-                        FINISH
-                        """, parameters)
-                    elif connection_type == "indirect":
-                        session.run("""
-                        CREATE
-                        (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                        (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                        (h)-[:INDIRECTLY_INHIBITS $edge_props]->(t)
-                        FINISH
-                        """, parameters)
+                    session.run("""
+                    CREATE
+                    (h:Node {name: $head_name, db_ids: $head_db_ids}),
+                    (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
+                    (h)-[:INHIBITS $edge_props]->(t)
+                    FINISH
+                    """, parameters)
                 nodes_added += 2
                 edges_added += 1
             elif h_valid:
@@ -146,6 +128,7 @@ def process_files():
                     name: 'combine',
                     db_ids: 'combine'
                 },
+                mergeRels: true,
                 produceSelfRel: false
             })
             YIELD node
