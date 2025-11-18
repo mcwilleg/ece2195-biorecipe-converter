@@ -22,6 +22,7 @@ def process_files():
     print(f"Extracting interactions from {input_path}...")
     interactions = []
     bar = progressbar.ProgressBar()
+    time.sleep(0.5)
     for filename in os.listdir(input_path):
         if filename.endswith(".xlsx") and not filename.startswith("~"):
             full_path = os.path.join(input_path, filename)
@@ -34,6 +35,7 @@ def process_files():
                         bar.update(len(interactions))
     bar.finish()
     print(f"Total interactions found: {len(interactions)}")
+    time.sleep(0.5)
     nodes_added = 0
     edges_added = 0
     driver = GraphDatabase.driver(uri, auth=(username, password))
@@ -58,52 +60,47 @@ def process_files():
             if t_valid:
                 for db_id in t["db_ids"]:
                     unique_db_ids[db_id] = True
+            parameters = {
+                "head_name": h["name"],
+                "head_db_ids": h["db_ids"],
+                "head_label": get_valid_node_type(h["type"]),
+                "tail_name": t["name"],
+                "tail_db_ids": t["db_ids"],
+                "tail_label": get_valid_node_type(t["type"]),
+                "edge_props": i,
+                "edge_type": "PROMOTES" if i["sign"] == "positive" else ("INHIBITS" if i["sign"] == "negative" else "REGULATES"),
+            }
             if h_valid and t_valid:
-                parameters = {
-                        "head_name": h["name"],
-                        "head_db_ids": h["db_ids"],
-                        "tail_name": t["name"],
-                        "tail_db_ids": t["db_ids"],
-                        "edge_props": i,
-                }
-                sign = i.pop("sign")
-                if sign == "positive":
-                    session.run("""
-                    CREATE
-                    (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                    (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                    (h)-[:PROMOTES $edge_props]->(t)
-                    FINISH
-                    """, parameters)
-                elif sign == "negative":
-                    session.run("""
-                    CREATE
-                    (h:Node {name: $head_name, db_ids: $head_db_ids}),
-                    (t:Node {name: $tail_name, db_ids: $tail_db_ids}),
-                    (h)-[:INHIBITS $edge_props]->(t)
-                    FINISH
-                    """, parameters)
+                i.pop("sign")
+                session.run("""
+                CREATE
+                (h:$($head_label) {name: $head_name, db_ids: $head_db_ids}),
+                (t:$($tail_label) {name: $tail_name, db_ids: $tail_db_ids}),
+                (h)-[:$($edge_type) $edge_props]->(t)
+                FINISH
+                """, parameters)
                 nodes_added += 2
                 edges_added += 1
             elif h_valid:
                 session.run("""
                 CREATE
-                (h:Node {name: $name, db_ids: $db_ids})
+                (h:$($head_label) {name: $head_name, db_ids: $head_db_ids})
                 FINISH
-                """, h)
+                """, parameters)
                 nodes_added += 1
             elif t_valid:
                 session.run("""
                 CREATE
-                (t:Node {name: $name, db_ids: $db_ids})
+                (t:$($tail_label) {name: $tail_name, db_ids: $tail_db_ids})
                 FINISH
-                """, t)
+                """, parameters)
                 nodes_added += 1
             bar_i += 2
             bar.update(bar_i)
         bar.finish()
         print(f"Total entities created: {nodes_added}")
         print(f"Total relationships created: {edges_added}")
+        time.sleep(0.5)
         print(f"Merging nodes by database IDs...")
         bar = progressbar.ProgressBar(max_value=len(unique_db_ids))
         bar_i = 0
@@ -116,8 +113,7 @@ def process_files():
                     name: 'combine',
                     db_ids: 'combine'
                 },
-                mergeRels: true,
-                produceSelfRel: false
+                mergeRels: true
             })
             YIELD node
             FINISH
@@ -128,7 +124,7 @@ def process_files():
 
 
 def is_valid_node(node):
-    if not node["name"]:
+    if not node["name"] or not is_valid_db_string(node["name"]):
         return False
     if node["db_ids"]:
         return True
@@ -158,8 +154,8 @@ def extract_row_data(row):
 
 def extract_node_data(row, idx = 0):
     node_ids = []
-    # append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
-    append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
+    append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
+    # append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
     return {
         "name": row[idx + 0].value,
         "type": row[idx + 1].value,
@@ -173,11 +169,22 @@ def extract_node_data(row, idx = 0):
 
 def append_valid_db_id(node_ids, db_name, db_id):
     if is_valid_db_string(db_name) and is_valid_db_string(db_id):
-        node_ids.append(f"{db_name}:{db_id}")
+        node_id = f"{db_name}:{db_id}"
+        # print(f"valid db_id: {node_id}")
+        node_ids.append(node_id)
 
 
 def is_valid_db_string(s):
-    return s and (s.lower() not in invalid_db_strings) and len(s) <= max_db_string_length and re.match(r"\w+", s)
+    return (s and
+            s.lower() not in invalid_db_strings and
+            len(s) <= max_db_string_length and
+            re.match(r"[a-zA-Z0-9-_]+", s))
+
+
+def get_valid_node_type(s):
+    if s and re.match(r"[a-zA-Z_-]+", s):
+        return re.sub(r"[ _-]", r"", s.title()).strip()
+    return "unknown"
 
 
 def clean_row(a):
