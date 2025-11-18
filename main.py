@@ -61,12 +61,10 @@ def process_files():
                 for db_id in t["db_ids"]:
                     unique_db_ids[db_id] = True
             parameters = {
-                "head_name": h["name"],
-                "head_db_ids": h["db_ids"],
                 "head_label": get_valid_node_type(h["type"]),
-                "tail_name": t["name"],
-                "tail_db_ids": t["db_ids"],
+                "head_props": h,
                 "tail_label": get_valid_node_type(t["type"]),
+                "tail_props": t,
                 "edge_props": i,
                 "edge_type": "PROMOTES" if i["sign"] == "positive" else ("INHIBITS" if i["sign"] == "negative" else "REGULATES"),
             }
@@ -74,8 +72,8 @@ def process_files():
                 i.pop("sign")
                 session.run("""
                 CREATE
-                (h:$($head_label) {name: $head_name, db_ids: $head_db_ids}),
-                (t:$($tail_label) {name: $tail_name, db_ids: $tail_db_ids}),
+                (h:$($head_label) $head_props),
+                (t:$($tail_label) $tail_props),
                 (h)-[:$($edge_type) $edge_props]->(t)
                 FINISH
                 """, parameters)
@@ -84,14 +82,14 @@ def process_files():
             elif h_valid:
                 session.run("""
                 CREATE
-                (h:$($head_label) {name: $head_name, db_ids: $head_db_ids})
+                (h:$($head_label) $head_props)
                 FINISH
                 """, parameters)
                 nodes_added += 1
             elif t_valid:
                 session.run("""
                 CREATE
-                (t:$($tail_label) {name: $tail_name, db_ids: $tail_db_ids})
+                (t:$($tail_label) $tail_props)
                 FINISH
                 """, parameters)
                 nodes_added += 1
@@ -110,10 +108,12 @@ def process_files():
             WITH collect(n) AS nodes
             CALL apoc.refactor.mergeNodes(nodes, {
                 properties: {
-                    name: 'combine',
+                    name: 'discard',
+                    other_names: 'combine',
                     db_ids: 'combine'
                 },
-                mergeRels: true
+                mergeRels: true,
+                singleElementAsArray: true
             })
             YIELD node
             FINISH
@@ -158,9 +158,9 @@ def extract_node_data(row, idx = 0):
     # append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
     return {
         "name": row[idx + 0].value,
+        "other_names": [row[idx + 0].value],
         "type": row[idx + 1].value,
         "subtype": row[idx + 2].value,
-        "hgnc_symbol": row[idx + 3].value,
         "db_ids": node_ids,
         "compartment": row[idx + 6].value,
         "compartment_id": row[idx + 7].value,
