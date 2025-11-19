@@ -110,7 +110,8 @@ def process_files():
                 properties: {
                     name: 'discard',
                     other_names: 'combine',
-                    db_ids: 'combine'
+                    db_ids: 'combine',
+                    other_db_ids: 'combine'
                 },
                 mergeRels: true,
                 singleElementAsArray: true
@@ -154,14 +155,17 @@ def extract_row_data(row):
 
 def extract_node_data(row, idx = 0):
     node_ids = []
+    other_node_ids = []
     append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
-    # append_valid_db_id(node_ids, row[idx + 4].value, row[idx + 5].value)
+    append_valid_db_id(other_node_ids, row[idx + 4].value, row[idx + 5].value)
+    other_node_ids.extend(node_ids)
     return {
         "name": row[idx + 0].value,
         "other_names": [row[idx + 0].value],
         "type": row[idx + 1].value,
         "subtype": row[idx + 2].value,
         "db_ids": node_ids,
+        "other_db_ids": other_node_ids,
         "compartment": row[idx + 6].value,
         "compartment_id": row[idx + 7].value,
     }
