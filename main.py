@@ -54,6 +54,7 @@ def process_files():
             t = i.pop("regulated")
             h_valid = is_valid_node(h)
             t_valid = is_valid_node(t)
+            i_valid = is_valid_edge(i)
             if h_valid:
                 for db_id in h["db_ids"]:
                     unique_db_ids[db_id] = True
@@ -68,7 +69,7 @@ def process_files():
                 "edge_props": i,
                 "edge_type": "PROMOTES" if i["sign"] == "positive" else ("INHIBITS" if i["sign"] == "negative" else "REGULATES"),
             }
-            if h_valid and t_valid:
+            if h_valid and t_valid and i_valid:
                 i.pop("sign")
                 session.run("""
                 CREATE
@@ -103,8 +104,14 @@ def process_files():
         bar = progressbar.ProgressBar(max_value=len(unique_db_ids))
         bar_i = 0
         for db_id in unique_db_ids:
+            merging_node_ids = session.run("""
+            MATCH (n)
+            WHERE $merging_id in n.db_ids
+            RETURN elementId(n)
+            """, {"merging_id": db_id}).value("elementId(n)")
             session.run("""
-            MATCH (n) WHERE $merging_id IN n.db_ids
+            MATCH (n)
+            WHERE elementId(n) IN $merging_node_ids
             WITH collect(n) AS nodes
             CALL apoc.refactor.mergeNodes(nodes, {
                 properties: {
@@ -118,7 +125,7 @@ def process_files():
             })
             YIELD node
             FINISH
-            """, {"merging_id": db_id})
+            """, {"merging_node_ids": merging_node_ids})
             bar_i += 1
             bar.update(bar_i)
         bar.finish()
@@ -130,6 +137,10 @@ def is_valid_node(node):
     if node["db_ids"]:
         return True
     return False
+
+
+def is_valid_edge(edge):
+    return True
 
 
 def extract_row_data(row):
