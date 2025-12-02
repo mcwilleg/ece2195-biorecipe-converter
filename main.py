@@ -10,8 +10,9 @@ uri = "neo4j://localhost:7687"
 username = "neo4j"
 password = "password"
 
-overwrite_existing_graph = True
+overwrite_existing_graph = False
 input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
+start_time = time.perf_counter()
 
 invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
                       "custom", "not found", "not mentioned", "not provided", "various", "unknown"]
@@ -45,6 +46,7 @@ def process_files():
                         bar.update(len(interactions))
     bar.finish()
     print(f"Total interactions found: {len(interactions)}")
+    print(f"Completed file processes in {(time.perf_counter() - start_time):.3f} seconds.")
     time.sleep(0.5)
     nodes_added = 0
     edges_added = 0
@@ -109,6 +111,7 @@ def process_files():
         bar.finish()
         print(f"Total entities created: {nodes_added}")
         print(f"Total relationships created: {edges_added}")
+        print(f"Completed graph processes in {(time.perf_counter() - start_time):.3f} seconds.")
         time.sleep(0.5)
         print(f"Merging nodes by database IDs...")
         bar = progressbar.ProgressBar(max_value=len(unique_db_ids))
