@@ -15,6 +15,16 @@ input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/in
 
 invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
                       "custom", "not found", "not mentioned", "not provided", "various", "unknown"]
+greek_analogs = {
+    "a": "α",
+    "b": "β",
+    "g": "γ",
+    "d": "δ",
+}
+greek_analog_dist = 0.25
+punctuation = ['-', '_', '/', ' ', ',', '~', '[', ']', '(', ')']
+punctuation_dist = 0.5
+
 max_db_string_length = 20
 
 
@@ -129,6 +139,27 @@ def process_files():
             bar_i += 1
             bar.update(bar_i)
         bar.finish()
+        time.sleep(0.5)
+        print(f"Measuring merge discrepancies...")
+        nodes = session.run("""
+        MATCH (n)
+        RETURN elementId(n), n.other_names
+        """).values()
+        bar = progressbar.ProgressBar(max_value=len(nodes))
+        bar_i = 0
+        for node in nodes:
+            node_id = node[0]
+            node_names = node[1]
+            discrepancy = calculate_discrepancy(node_names)
+            session.run("""
+            MATCH (n)
+            WHERE elementId(n) = $node_id
+            SET n.name_discrepancy = $discrepancy
+            FINISH
+            """, {"node_id": node_id, "discrepancy": discrepancy})
+            bar_i += 1
+            bar.update(bar_i)
+        bar.finish()
 
 
 def is_valid_node(node):
@@ -141,6 +172,51 @@ def is_valid_node(node):
 
 def is_valid_edge(edge):
     return True
+
+
+def calculate_discrepancy(strings):
+    f = len(strings)
+    if f <= 1:
+        return 0.0
+    total = 0
+    num_comparisons = 0
+    for i in range(f - 1):
+        for j in range(i + 1, f - i):
+            s1 = strings[i]
+            s2 = strings[j]
+            total = total + alt_levenshtein(s1.lower(), s2.lower()) / max(len(s1), len(s2))
+            num_comparisons += 1
+    return total / num_comparisons
+
+
+def alt_levenshtein(s1, s2):
+    if len(s1) == 0:
+        return len(s2)
+    if len(s2) == 0:
+        return len(s1)
+    h1 = s1[0]
+    h2 = s2[0]
+    char_dist = alt_levenshtein_char_distance(h1, h2)
+    if char_dist == 0:
+        return alt_levenshtein(s1[1:], s2[1:])
+    a = alt_levenshtein(s1[1:], s2)
+    b = alt_levenshtein(s1, s2[1:])
+    c = alt_levenshtein(s1[1:], s2[1:])
+    m = min(a, b, c)
+    return char_dist + m
+
+
+def alt_levenshtein_char_distance(c1, c2):
+    if c1 == c2:
+        return 0
+    dist = 1
+    if c1 in punctuation:
+        dist *= punctuation_dist
+    if c2 in punctuation:
+        dist *= punctuation_dist
+    if (c1 in greek_analogs and c2 == greek_analogs[c1]) or (c2 in greek_analogs and c1 == greek_analogs[c2]):
+        dist *= greek_analog_dist
+    return dist
 
 
 def extract_row_data(row):
@@ -179,6 +255,7 @@ def extract_node_data(row, idx = 0):
         "other_db_ids": other_node_ids,
         "compartment": row[idx + 6].value,
         "compartment_id": row[idx + 7].value,
+        "name_discrepancy": 1.0,
     }
 
 
