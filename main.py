@@ -25,6 +25,7 @@ greek_analogs = {
 greek_analog_dist = 0.25
 punctuation = ['-', '_', '/', ' ', ',', '~', '[', ']', '(', ')']
 punctuation_dist = 0.5
+name_discrepancy_threshold = 0.5
 
 max_db_string_length = 20
 
@@ -123,29 +124,31 @@ def process_files():
         bar = progressbar.ProgressBar(max_value=len(unique_db_ids))
         bar_i = 0
         for db_id in unique_db_ids:
-            merging_node_ids = session.run("""
+            merging_nodes = session.run("""
             MATCH (n)
             WHERE $merging_id in n.db_ids
-            RETURN elementId(n)
-            """, {"merging_id": db_id}).value("elementId(n)")
-            session.run("""
-            MATCH (n)
-            WHERE elementId(n) IN $merging_node_ids
-            WITH collect(n) AS nodes
-            CALL apoc.refactor.mergeNodes(nodes, {
-                properties: {
-                    location: 'combine',
-                    name: 'discard',
-                    other_names: 'combine',
-                    db_ids: 'combine',
-                    other_db_ids: 'combine'
-                },
-                mergeRels: true,
-                singleElementAsArray: true
-            })
-            YIELD node
-            FINISH
-            """, {"merging_node_ids": merging_node_ids})
+            RETURN elementId(n), n.name
+            """, {"merging_id": db_id}).values()
+            merging_node_groups = group_by_name_discrepancy(merging_nodes)
+            for merging_node_ids in merging_node_groups:
+                session.run("""
+                MATCH (n)
+                WHERE elementId(n) IN $merging_node_ids
+                WITH collect(n) AS nodes
+                CALL apoc.refactor.mergeNodes(nodes, {
+                    properties: {
+                        location: 'combine',
+                        name: 'discard',
+                        other_names: 'combine',
+                        db_ids: 'combine',
+                        other_db_ids: 'combine'
+                    },
+                    mergeRels: true,
+                    singleElementAsArray: true
+                })
+                YIELD node
+                FINISH
+                """, {"merging_node_ids": merging_node_groups[merging_node_ids]})
             bar_i += 1
             bar.update(bar_i)
         bar.finish()
@@ -182,6 +185,26 @@ def is_valid_node(node):
 
 def is_valid_edge(edge):
     return True
+
+
+def group_by_name_discrepancy(nodes):
+    groups = {}
+    i = 0
+    while i < len(nodes):
+        next_node = nodes[i]
+        next_id = next_node[0]
+        next_name = next_node[1]
+        inserted = False
+        for group_name in groups:
+            discrepancy = calculate_discrepancy([group_name, next_name])
+            if discrepancy < name_discrepancy_threshold:
+                groups[group_name].append(next_id)
+                inserted = True
+                break
+        if not inserted:
+            groups[next_name] = [next_id]
+        i += 1
+    return groups
 
 
 def calculate_discrepancy(strings):
