@@ -15,7 +15,7 @@ input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/in
 start_time = time.perf_counter()
 
 invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
-                      "custom", "not found", "not mentioned", "not provided", "various", "unknown"]
+                      "custom", "not found", "not mentioned", "not provided", "various", "unknown", "-", "_"]
 greek_analogs = {
     "a": "α",
     "b": "β",
@@ -40,10 +40,12 @@ def process_files():
             if os.path.isfile(full_path):
                 wb = openpyxl.load_workbook(full_path)
                 for ws in wb:
+                    line_number = 2
                     for row in ws.iter_rows(min_row=2, min_col=2, max_col=29):
-                        i = extract_row_data(row)
+                        i = extract_row_data(row, f"{filename} {ws.title}: {line_number}")
                         interactions.append(i)
                         bar.update(len(interactions))
+                        line_number += 1
     bar.finish()
     print(f"Total interactions found: {len(interactions)}")
     print(f"Completed file processes in {(time.perf_counter() - start_time):.3f} seconds.")
@@ -81,31 +83,35 @@ def process_files():
                 "edge_props": i,
                 "edge_type": "PROMOTES" if i["sign"] == "positive" else ("INHIBITS" if i["sign"] == "negative" else "REGULATES"),
             }
-            if h_valid and t_valid and i_valid:
-                i.pop("sign")
-                session.run("""
-                CREATE
-                (h:$($head_label) $head_props),
-                (t:$($tail_label) $tail_props),
-                (h)-[:$($edge_type) $edge_props]->(t)
-                FINISH
-                """, parameters)
-                nodes_added += 2
-                edges_added += 1
-            elif h_valid:
-                session.run("""
-                CREATE
-                (h:$($head_label) $head_props)
-                FINISH
-                """, parameters)
-                nodes_added += 1
-            elif t_valid:
-                session.run("""
-                CREATE
-                (t:$($tail_label) $tail_props)
-                FINISH
-                """, parameters)
-                nodes_added += 1
+            try:
+                if h_valid and t_valid and i_valid:
+                    i.pop("sign")
+                    session.run("""
+                    CREATE
+                    (h:$($head_label) $head_props),
+                    (t:$($tail_label) $tail_props),
+                    (h)-[:$($edge_type) $edge_props]->(t)
+                    FINISH
+                    """, parameters)
+                    nodes_added += 2
+                    edges_added += 1
+                elif h_valid:
+                    session.run("""
+                    CREATE
+                    (h:$($head_label) $head_props)
+                    FINISH
+                    """, parameters)
+                    nodes_added += 1
+                elif t_valid:
+                    session.run("""
+                    CREATE
+                    (t:$($tail_label) $tail_props)
+                    FINISH
+                    """, parameters)
+                    nodes_added += 1
+            except Exception as e:
+                print(f"\nError occurred processing interaction at {i["location"]}")
+                print(e)
             bar_i += 2
             bar.update(bar_i)
         bar.finish()
@@ -128,6 +134,7 @@ def process_files():
             WITH collect(n) AS nodes
             CALL apoc.refactor.mergeNodes(nodes, {
                 properties: {
+                    location: 'combine',
                     name: 'discard',
                     other_names: 'combine',
                     db_ids: 'combine',
@@ -183,30 +190,31 @@ def calculate_discrepancy(strings):
         return 0.0
     total = 0
     num_comparisons = 0
-    for i in range(f - 1):
-        for j in range(i + 1, f - i):
-            s1 = strings[i]
-            s2 = strings[j]
-            total = total + alt_levenshtein(s1.lower(), s2.lower()) / max(len(s1), len(s2))
-            num_comparisons += 1
+    s1 = strings[0]
+    for i in range(1, f):
+        s2 = strings[i]
+        total = total + iter_levenshtein(s1.lower(), s2.lower()) / max(len(s1), len(s2))
+        num_comparisons += 1
     return total / num_comparisons
 
 
-def alt_levenshtein(s1, s2):
-    if len(s1) == 0:
-        return len(s2)
-    if len(s2) == 0:
-        return len(s1)
-    h1 = s1[0]
-    h2 = s2[0]
-    char_dist = alt_levenshtein_char_distance(h1, h2)
-    if char_dist == 0:
-        return alt_levenshtein(s1[1:], s2[1:])
-    a = alt_levenshtein(s1[1:], s2)
-    b = alt_levenshtein(s1, s2[1:])
-    c = alt_levenshtein(s1[1:], s2[1:])
-    m = min(a, b, c)
-    return char_dist + m
+def iter_levenshtein(s1, s2):
+    m = len(s1)
+    n = len(s2)
+    d = [[0] * (n + 1) for _ in range(m + 1)]
+    for i in range(1, m + 1):
+        d[i][0] = i
+    for j in range(1, n + 1):
+        d[0][j] = j
+    for j in range(1, n + 1):
+        for i in range(1, m + 1):
+            c1 = s1[i - 1]
+            c2 = s2[j - 1]
+            cost = alt_levenshtein_char_distance(c1, c2)
+            d[i][j] = min(d[i - 1][j] + 1,
+                          d[i][j - 1] + 1,
+                          d[i - 1][j - 1] + cost)
+    return d[m][n]
 
 
 def alt_levenshtein_char_distance(c1, c2):
@@ -222,11 +230,12 @@ def alt_levenshtein_char_distance(c1, c2):
     return dist
 
 
-def extract_row_data(row):
+def extract_row_data(row, location):
     clean_row(row)
-    regulator = extract_node_data(row, 0)
-    regulated = extract_node_data(row, 8)
+    regulator = extract_node_data(row, 0, location)
+    regulated = extract_node_data(row, 8, location)
     interaction = {
+        "location": location,
         "regulator": regulator,
         "regulated": regulated,
         "sign": row[16].value,
@@ -243,13 +252,14 @@ def extract_row_data(row):
     return interaction
 
 
-def extract_node_data(row, idx = 0):
+def extract_node_data(row, idx = 0, location = ""):
     node_ids = []
     other_node_ids = []
     append_valid_db_id(node_ids, "hgnc", row[idx + 3].value)
     append_valid_db_id(other_node_ids, row[idx + 4].value, row[idx + 5].value)
     other_node_ids.extend(node_ids)
     return {
+        "location": location,
         "name": row[idx + 0].value,
         "other_names": [row[idx + 0].value],
         "type": row[idx + 1].value,
@@ -265,7 +275,6 @@ def extract_node_data(row, idx = 0):
 def append_valid_db_id(node_ids, db_name, db_id):
     if is_valid_db_string(db_name) and is_valid_db_string(db_id):
         node_id = f"{db_name}:{db_id}"
-        # print(f"valid db_id: {node_id}")
         node_ids.append(node_id)
 
 
