@@ -6,13 +6,15 @@ import openpyxl
 import progressbar
 from neo4j import GraphDatabase
 
+input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
+
 uri = "neo4j://localhost:7687"
 username = "neo4j"
 password = "password"
 
 overwrite_existing_graph = False
-input_path = "D:/University/2025 Fall/ECE2195 Knowledge Graphs/ece2195-gbm-kg/input2"
-start_time = time.perf_counter()
+limit_merging_by_name_discrepancy = True
+name_discrepancy_threshold = 0.5
 
 invalid_db_strings = ["none", "not applicable", "n/a", "multiple", "not specified", "none mentioned", "not available",
                       "custom", "not found", "not mentioned", "not provided", "various", "unknown", "-", "_"]
@@ -25,9 +27,9 @@ greek_analogs = {
 greek_analog_dist = 0.25
 punctuation = ['-', '_', '/', ' ', ',', '~', '[', ']', '(', ')']
 punctuation_dist = 0.5
-name_discrepancy_threshold = 0.5
-
 max_db_string_length = 20
+
+start_time = time.perf_counter()
 
 
 def process_files():
@@ -189,6 +191,10 @@ def is_valid_edge(edge):
 
 def group_by_name_discrepancy(nodes):
     groups = {}
+    if not limit_merging_by_name_discrepancy:
+        groups["nodes"] = []
+        for node in nodes:
+            groups["nodes"].append(node[0])
     i = 0
     while i < len(nodes):
         next_node = nodes[i]
